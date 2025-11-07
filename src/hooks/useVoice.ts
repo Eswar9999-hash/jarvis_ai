@@ -13,6 +13,7 @@ export const useVoice = (settings: VoiceSettings) => {
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null); // FIX: track mic stream for proper cleanup
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -35,7 +36,9 @@ export const useVoice = (settings: VoiceSettings) => {
   const monitorAudioLevel = useCallback(async () => {
     try {
       if (!audioContextRef.current) {
+        // Acquire and store the mic stream so we can stop tracks later
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStreamRef.current = stream; // FIX: store stream for cleanup to avoid leaks
         audioContextRef.current = new AudioContext();
         const source = audioContextRef.current.createMediaStreamSource(stream);
         analyserRef.current = audioContextRef.current.createAnalyser();
@@ -66,6 +69,20 @@ export const useVoice = (settings: VoiceSettings) => {
       monitorAudioLevel();
     } else {
       setAudioLevel(0);
+      // FIX: release audio resources when no longer listening to prevent memory leaks
+      try {
+        // Stop all media tracks
+        mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+        // Disconnect analyser and close context
+        analyserRef.current = null;
+        if (audioContextRef.current) {
+          audioContextRef.current.close();
+          audioContextRef.current = null;
+        }
+      } catch (cleanupError) {
+        console.error('Error cleaning up audio resources:', cleanupError);
+      }
     }
   }, [isListening, monitorAudioLevel]);
 
@@ -108,11 +125,17 @@ export const useVoice = (settings: VoiceSettings) => {
     
     // Find the first available preferred voice
     for (const preferredName of preferredVoices) {
-      const voice = voicesRef.current.find(v => 
-        v.name.includes(preferredName) || 
-        (settings.type === 'female' && v.name.toLowerCase().includes('female')) ||
-        (settings.type === 'male' && v.name.toLowerCase().includes('male'))
-      );
+      const voice = voicesRef.current.find(v => {
+        const name = v.name.toLowerCase();
+        // FIX: avoid false-positive where 'female' contains substring 'male'
+        if (settings.type === 'male') {
+          return v.name.includes(preferredName) || (name.includes('male') && !name.includes('female'));
+        }
+        if (settings.type === 'female') {
+          return v.name.includes(preferredName) || (name.includes('female') && !name.includes('male'));
+        }
+        return v.name.includes(preferredName);
+      });
       if (voice) {
         console.log('Selected voice:', voice.name);
         return voice;
@@ -123,10 +146,11 @@ export const useVoice = (settings: VoiceSettings) => {
     const fallbackVoice = voicesRef.current.find(v => {
       const name = v.name.toLowerCase();
       if (settings.type === 'female') {
-        return name.includes('female') || name.includes('woman') || 
+        return (name.includes('female') && !name.includes('male')) || name.includes('woman') || 
                ['zira', 'hazel', 'samantha', 'victoria', 'karen', 'susan'].some(n => name.includes(n));
       } else {
-        return name.includes('male') || name.includes('man') || 
+        // FIX: ensure we do not match 'female' when looking for male voices
+        return (name.includes('male') && !name.includes('female')) || name.includes('man') || 
                ['david', 'mark', 'daniel', 'alex', 'thomas', 'james'].some(n => name.includes(n));
       }
     });
@@ -200,6 +224,18 @@ export const useVoice = (settings: VoiceSettings) => {
       recognitionRef.current.stop();
     }
     setIsListening(false);
+    // FIX: proactively cleanup microphone resources to avoid dangling streams/contexts
+    try {
+      mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+      analyserRef.current = null;
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+    } catch (cleanupError) {
+      console.error('Error cleaning up audio resources:', cleanupError);
+    }
   }, []);
 
   const speak = useCallback((text: string) => {

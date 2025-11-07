@@ -43,4 +43,11 @@ export const themes = {
   },
 };
 
-export const getTheme = (theme: Theme) => themes[theme];
+export const getTheme = (theme: Theme) => {
+  const themeConfig = themes[theme];
+  if (!themeConfig) {
+    console.warn(`Theme "${theme}" not found, using default`);
+    return themes['arc-reactor'];
+  }
+  return themeConfig;
+};

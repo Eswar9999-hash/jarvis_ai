@@ -12,6 +12,8 @@ interface VoiceControlsProps {
   onToggleMode: () => void;
   speakerMuted: boolean;
   accentColor: string;
+  error?: string | null;
+  isPermissionGranted?: boolean | null;
 }
 
 export const VoiceControls = ({
@@ -24,6 +26,8 @@ export const VoiceControls = ({
   onToggleMode,
   speakerMuted,
   accentColor,
+  error,
+  isPermissionGranted,
 }: VoiceControlsProps) => {
   return (
     <div className="bg-black/40 backdrop-blur-xl rounded-2xl p-6 border" style={{ borderColor: `${accentColor}40` }}>
@@ -91,6 +95,25 @@ export const VoiceControls = ({
               }}
             />
           </div>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {error && (
+        <div className="mt-4 p-3 rounded-lg bg-red-500/20 border border-red-500/50">
+          <p className="text-xs text-red-400">{error}</p>
+          {isPermissionGranted === false && (
+            <p className="text-xs text-red-300 mt-1">
+              Click the microphone button to request permission again.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Permission Status */}
+      {isPermissionGranted === true && !error && (
+        <div className="mt-4 p-2 rounded-lg bg-green-500/20 border border-green-500/50">
+          <p className="text-xs text-green-400">✓ Microphone permission granted</p>
         </div>
       )}
     </div>

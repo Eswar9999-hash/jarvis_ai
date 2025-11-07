@@ -9,6 +9,8 @@ import { useVoice } from './hooks/useVoice';
 import { useSupabase } from './hooks/useSupabase';
 import { useGemini } from './hooks/useGemini';
 import { getTheme } from './utils/themes';
+import { config } from './utils/config';
+import { emitEvent } from './utils/plugins';
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([
@@ -86,12 +88,20 @@ function App() {
       timestamp: new Date()
     };
 
+    // FIX: append the user message and use the updated history below
+    // Using the pre-update `messages` here can cause stale history to be sent to AI.
     setMessages(prev => [...prev, userMessage]);
+    if (config.features.plugins) {
+      emitEvent('message:sent', { message: userMessage });
+    }
     await supabase.saveMessage(userMessage);
     setInput('');
 
     try {
-      const aiResponse = await ai.generateResponse(messages, userMessage.text);
+      // FIX: ensure AI receives the latest conversation including the new user message
+      // Build a local conversation history to avoid using the stale `messages` closure
+      const conversationHistory = [...messages, userMessage];
+      const aiResponse = await ai.generateResponse(conversationHistory, userMessage.text);
       
       const jarvisMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -100,8 +110,12 @@ function App() {
         timestamp: new Date()
       };
 
+      // Append JARVIS response to messages (functional update prevents race conditions)
       setMessages(prev => [...prev, jarvisMessage]);
       await supabase.saveMessage(jarvisMessage);
+      if (config.features.plugins) {
+        emitEvent('response:received', { message: jarvisMessage });
+      }
 
       if (!speakerMuted) {
         voice.speak(jarvisMessage.text);
@@ -117,6 +131,9 @@ function App() {
 
       setMessages(prev => [...prev, errorMessage]);
       await supabase.saveMessage(errorMessage);
+      if (config.features.plugins) {
+        emitEvent('response:error', { error, message: errorMessage });
+      }
     }
   }, [input, messages, ai, supabase, voice, speakerMuted]);
 
@@ -134,6 +151,9 @@ function App() {
     
     setMessages(prev => [...prev, emergencyMsg]);
     supabase.saveMessage(emergencyMsg);
+    if (config.features.plugins) {
+      emitEvent('system:emergency_stop');
+    }
   }, [ai, voice, supabase]);
 
   const handleRetry = useCallback(() => {
