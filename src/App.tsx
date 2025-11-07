@@ -82,7 +82,7 @@ function App() {
     if (!messageText || ai.isProcessing) return;
 
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Date.now().toString(),
       text: messageText,
       type: 'user',
       timestamp: new Date()
@@ -104,7 +104,7 @@ function App() {
       const aiResponse = await ai.generateResponse(conversationHistory, userMessage.text);
       
       const jarvisMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : (Date.now() + 1).toString(),
         text: aiResponse.text,
         type: 'jarvis',
         timestamp: new Date()
@@ -123,7 +123,7 @@ function App() {
 
     } catch (error: any) {
       const errorMessage: Message = {
-        id: (Date.now() + 2).toString(),
+        id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : (Date.now() + 2).toString(),
         text: `I apologize, Sir, but I encountered a technical difficulty: ${error.message}. Please try again.`,
         type: 'jarvis',
         timestamp: new Date()
@@ -143,7 +143,7 @@ function App() {
     voice.stopListening();
     
     const emergencyMsg: Message = {
-      id: Date.now().toString(),
+      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Date.now().toString(),
       text: 'Emergency stop activated. All processes terminated.',
       type: 'jarvis',
       timestamp: new Date()

@@ -242,7 +242,8 @@ export const useSupabase = () => {
         textLength: messageData.text.length
       });
       
-      const { data, error } = await supabase.from('messages').insert(messageData).select();
+      // Insert without select to avoid RLS "no rows returned" issues
+      const { error } = await supabase.from('messages').insert(messageData);
       
       if (error) {
         console.error('[Supabase] Error saving message:', {
@@ -257,16 +258,15 @@ export const useSupabase = () => {
         if (error.message?.includes('column "type"') || error.code === '42703') {
           log.warn('[Supabase] Retrying without type column...');
           delete messageData.type;
-          const { data: retryData, error: retryError } = await supabase.from('messages').insert(messageData).select();
+          const { error: retryError } = await supabase.from('messages').insert(messageData);
           
           if (retryError) {
             console.error('[Supabase] Retry failed:', retryError);
             throw retryError;
           }
           
-          log.info('[Supabase] Message saved successfully (without type):', {
-            id: message.id,
-            savedData: retryData
+          log.info('[Supabase] Message saved successfully (without type)', {
+            id: message.id
           });
           if (config.features.cache) {
             // Invalidate cached messages for this conversation and "all"
@@ -280,13 +280,12 @@ export const useSupabase = () => {
           if (messageData.id) {
             log.warn('[Supabase] Invalid UUID for id. Retrying without id to use DB default.');
             delete messageData.id;
-            const { data: retryData, error: retryError } = await supabase.from('messages').insert(messageData).select();
+            const { error: retryError } = await supabase.from('messages').insert(messageData);
             if (retryError) {
               console.error('[Supabase] Retry failed after removing id:', retryError);
               throw retryError;
             }
-            log.info('[Supabase] Message saved successfully (DB-generated id):', {
-              id: retryData?.[0]?.id,
+            log.info('[Supabase] Message saved successfully (DB-generated id)', {
               originalId: message.id
             });
             if (config.features.cache) {
