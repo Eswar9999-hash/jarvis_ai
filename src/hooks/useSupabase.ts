@@ -215,12 +215,20 @@ export const useSupabase = () => {
       // Prepare message data matching database schema
       // IMPORTANT: Use the message's timestamp, not database NOW() to preserve order
       const messageData: any = {
-        id: message.id,
         conversation_id: conversationId,
         text: message.text,
         // Use the exact timestamp from the message to preserve chronological order
         timestamp: message.timestamp.toISOString(),
       };
+
+      // Only include id if it is a valid UUID; otherwise let DB generate it
+      const isUuid = (value: string | undefined): boolean => {
+        if (!value) return false;
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+      };
+      if (isUuid(message.id)) {
+        messageData.id = message.id;
+      }
       
       // Only add type if the column exists in the database
       // If it doesn't exist, we'll skip it (database might not have this column)
@@ -267,6 +275,27 @@ export const useSupabase = () => {
           return true;
         }
         
+        // Invalid UUID errors: retry without id to allow DB default
+        if (error.code === '22P02' || /invalid input syntax for type uuid/i.test(error.message || '')) {
+          if (messageData.id) {
+            log.warn('[Supabase] Invalid UUID for id. Retrying without id to use DB default.');
+            delete messageData.id;
+            const { data: retryData, error: retryError } = await supabase.from('messages').insert(messageData).select();
+            if (retryError) {
+              console.error('[Supabase] Retry failed after removing id:', retryError);
+              throw retryError;
+            }
+            log.info('[Supabase] Message saved successfully (DB-generated id):', {
+              id: retryData?.[0]?.id,
+              originalId: message.id
+            });
+            if (config.features.cache) {
+              globalCache.invalidate('messages:');
+            }
+            return true;
+          }
+        }
+
         throw error;
       }
       
